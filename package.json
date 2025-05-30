@@ -8,8 +8,9 @@
     "dev": "nodemon api/server.js"
   },
   "dependencies": {
+    "node-cache": "^5.1.2",
     "node-fetch": "^2.6.7",
-    "node-cache": "^5.1.2"
+    "sharp": "^0.34.2"
   },
   "devDependencies": {
     "nodemon": "^2.0.15"
