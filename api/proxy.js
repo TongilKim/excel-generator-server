@@ -127,17 +127,14 @@ module.exports = async (req, res) => {
 
     // Smart format handling
     if (!format) {
-      // If no format specified, keep original format but normalize 'jpg' to 'jpeg'
+      // Always keep original format, normalizing jpg to jpeg
       outputFormat = metadata.format === "jpg" ? "jpeg" : metadata.format;
-    } else if (format === "webp") {
-      // Allow WebP conversion for better compression
-      outputFormat = "webp";
     } else if (format === "jpg" || format === "jpeg") {
-      // Normalize jpg/jpeg
+      // Ensure jpg/jpeg stays as jpeg
       outputFormat = "jpeg";
-    } else if (format === "png" && metadata.hasAlpha) {
-      // Only allow PNG if image has transparency
-      outputFormat = "png";
+    } else if (format === "webp" && metadata.format !== "png") {
+      // Only allow WebP conversion for non-PNG images
+      outputFormat = "webp";
     } else {
       // Default to keeping original format
       outputFormat = metadata.format === "jpg" ? "jpeg" : metadata.format;
@@ -148,37 +145,47 @@ module.exports = async (req, res) => {
       sharpImage = sharpImage.jpeg({
         quality: outputQuality || 80,
         mozjpeg: true, // Use mozjpeg for better compression
+        force: false, // Don't force JPEG on PNG images
       });
     } else if (outputFormat === "webp") {
       sharpImage = sharpImage.webp({
         quality: outputQuality || 80,
-        effort: 4, // Balance between compression speed and size
+        effort: 4,
       });
     } else if (outputFormat === "png") {
       sharpImage = sharpImage.png({
-        compressionLevel: 9, // Maximum compression
-        palette: true, // Use palette for better compression when possible
+        compressionLevel: 9,
+        palette: true,
       });
     }
 
     // Process the image
     const processedImageBuffer = await sharpImage.toBuffer();
 
-    // Determine content type based on format
-    const contentType = `image/${
-      outputFormat === "jpg" ? "jpeg" : outputFormat
-    }`;
+    // Set proper MIME type
+    const mimeTypes = {
+      jpeg: "image/jpeg",
+      jpg: "image/jpeg",
+      png: "image/png",
+      webp: "image/webp",
+    };
 
-    // Store in cache
+    const contentType = mimeTypes[outputFormat] || `image/${outputFormat}`;
+
+    // Add format information in headers
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("X-Original-Format", metadata.format);
+    res.setHeader("X-Output-Format", outputFormat);
+    res.setHeader("Cache-Control", "public, max-age=604800");
+    res.setHeader("X-Cache", "MISS");
+
+    // Store in cache with format information
     imageCache.set(cacheKey, {
       data: processedImageBuffer,
       contentType: contentType,
+      originalFormat: metadata.format,
+      outputFormat: outputFormat,
     });
-
-    // Set response headers
-    res.setHeader("Content-Type", contentType);
-    res.setHeader("Cache-Control", "public, max-age=604800");
-    res.setHeader("X-Cache", "MISS");
 
     // Return the processed image
     return res.status(200).send(processedImageBuffer);
